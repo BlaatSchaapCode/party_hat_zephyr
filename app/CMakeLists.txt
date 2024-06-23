@@ -9,4 +9,17 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(app LANGUAGES C)
 
-target_sources(app PRIVATE src/main.c)
+target_sources(app PRIVATE 
+	src/main.c
+	src/demo.c
+	src/ws2812/ws2812.c
+	src/ws2812/drivers/ws2812_nrfx.c
+	src/ble.c
+	src/cts.c
+)
+
+zephyr_include_directories(
+	src/ws2812
+	src/ws2812/drivers
+	$ENV{ZEPHYR_BASE}/
+)

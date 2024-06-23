@@ -1,0 +1,14 @@
+# Copyright (c) 2021 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+CONFIG_ARM_MPU=y
+CONFIG_HW_STACK_PROTECTION=y
+
+
+# Use RTT in stead of Serial
+CONFIG_SERIAL=n
+CONFIG_CONSOLE=y
+CONFIG_UART_CONSOLE=n
+CONFIG_USE_SEGGER_RTT=y
+CONFIG_RTT_CONSOLE=y
+
