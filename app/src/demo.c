@@ -39,6 +39,16 @@
 
 #include <stdio.h>
 
+static uint16_t m_speed = 100;
+
+uint16_t get_speed() {
+	return m_speed;
+}
+
+void set_speed(uint16_t speed) {
+	m_speed = speed;
+}
+
 void delay_ms(uint32_t milliseconds) {
 		k_sleep(K_MSEC(milliseconds));
 }
@@ -87,11 +97,12 @@ rgb_t colours[LED_COUNT]  = {
 */
 
 
-static void*m_colours;
+//static void*m_colours;
+static rgb_t*m_colours;
 
 void get_leds(void**leds, int *size) {
-	*leds=(void*)m_colours;
-	*size=LED_COUNT * sizeof(rgb_t);
+	*leds=(void*)(m_colours+1);
+	*size=(LED_COUNT * sizeof(rgb_t))-sizeof(rgb_t);
 }
 
 
@@ -140,12 +151,19 @@ rgb_t colours[LED_COUNT]  = {
 		while (ws2812_is_busy());
 		ws2812_fill_buffer_decompress(0, sizeof(colours), (uint8_t *)&colours);
 		ws2812_apply(sizeof(colours));
-		delay_ms(100);
-		temp=colours[0];
-		for (int i = 0; i < (LED_COUNT-1); i++) {
-			colours[i]=colours[i+1];
+		if (m_speed) {
+			delay_ms(m_speed);
+//			temp=colours[0];
+			temp=colours[1];
+			// Skipping the first led, to make it 18 in stead of 19
+			// For some reason if my loop starts at 1 they don't work **TODO**
+			for (int i = 0; i < (LED_COUNT-1); i++) {
+				colours[i]=colours[i+1];
+			}
+			colours[(LED_COUNT-1)]=temp;
+		} else {
+			delay_ms(100);
 		}
-		colours[(LED_COUNT-1)]=temp;
 	}
 }
 

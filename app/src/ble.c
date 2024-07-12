@@ -32,6 +32,8 @@ static bool m_notify_on;
 
 // Note, quick and dirty for testing
 void get_leds(void**leds, int *size);
+int16_t get_speed(void);
+void set_speed(int16_t);
 
 
 // 65dbc53e-a859-4422-947c-f016c0e0af10
@@ -46,6 +48,7 @@ static const struct bt_uuid_128 vnd_chr_rgb_uuid = BT_UUID_INIT_128(
 		BT_UUID_128_ENCODE(0x65dbc53e, 0x0001, 0x4422, 0x947c, 0xf016c0e0af10)
 	);
 
+
 static const struct bt_uuid_128 vnd_chr_spd_uuid = BT_UUID_INIT_128(
 		BT_UUID_128_ENCODE(0x65dbc53e, 0x0002, 0x4422, 0x947c, 0xf016c0e0af10)
 	);
@@ -54,10 +57,9 @@ static const struct bt_uuid_128 vnd_chr_spd_uuid = BT_UUID_INIT_128(
 
 static uint8_t vnd_value[VND_MAX_LEN + 1] = { 'V', 'e', 'n', 'd', 'o', 'r'};
 
-static ssize_t read_vnd(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			void *buf, uint16_t len, uint16_t offset)
-{
-	puts("read_vnd");
+static ssize_t read_rgb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+			void *buf, uint16_t len, uint16_t offset){
+	puts("read_rgb");
 	void *value;// = attr->user_data;
 	int size;
 	get_leds(&value,&size);
@@ -65,30 +67,39 @@ static ssize_t read_vnd(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, value, size);
 }
 
-static ssize_t write_vnd(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+static ssize_t write_rgb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			 const void *buf, uint16_t len, uint16_t offset,
-			 uint8_t flags)
-{
-		puts("write_vnd");
+			 uint8_t flags) {
+		puts("write_rgb");
 
-/*
-	uint8_t *value = attr->user_data;
-
-	if (offset + len > VND_MAX_LEN) {
-		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
-	}
-*/
-
-	void *value;// = attr->user_data;
+	void *value;
 	int size;
 	get_leds(&value,&size);
 	if ((offset+len)>size )
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
-
 	memcpy(value + offset, buf, len);
-
 	return len;
 }
+
+//--
+static ssize_t read_spd(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+			void *buf, uint16_t len, uint16_t offset){
+	uint16_t speed = get_speed();
+
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, &speed, sizeof(speed));
+}
+
+static ssize_t write_spd(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+			 const void *buf, uint16_t len, uint16_t offset,
+			 uint8_t flags) {
+	puts("write_spd");
+
+	uint16_t speed = *(uint16_t*)(buf);
+	set_speed(speed);
+	return len;
+}
+
+//--
 
 static void vnd_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
 {
@@ -105,11 +116,12 @@ const struct bt_gatt_cpf m_cpf = {
 
 /* Vendor Primary Service Declaration */
 BT_GATT_SERVICE_DEFINE(vnd_svc,
+
 	BT_GATT_PRIMARY_SERVICE(&vnd_srv_uuid.uuid),
 		BT_GATT_CHARACTERISTIC(&vnd_chr_rgb_uuid.uuid,
 					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE | BT_GATT_CHRC_NOTIFY,
 					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-					   read_vnd, write_vnd, vnd_value),
+					   read_rgb, write_rgb, NULL),
 			BT_GATT_CCC(vnd_ccc_cfg_changed,
 					BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 			BT_GATT_CUD("RGB", BT_GATT_PERM_READ),
@@ -117,7 +129,7 @@ BT_GATT_SERVICE_DEFINE(vnd_svc,
 	BT_GATT_CHARACTERISTIC(&vnd_chr_spd_uuid.uuid,
 					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE | BT_GATT_CHRC_NOTIFY,
 					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-					   read_vnd, write_vnd, vnd_value),
+					   read_spd, write_spd, NULL),
 			BT_GATT_CUD("Speed", BT_GATT_PERM_READ),
 			BT_GATT_CPF(&m_cpf),
 
@@ -146,14 +158,18 @@ static void connected(struct bt_conn *conn, uint8_t err)
 {
 	if (err) {
 		printk("Connection failed (err 0x%02x)\n", err);
+
+
+
 	} else {
 		printk("Connected\n");
 	}
 }
 
-static void disconnected(struct bt_conn *conn, uint8_t reason)
-{
+static void disconnected(struct bt_conn *conn, uint8_t reason) {
 	printk("Disconnected (reason 0x%02x)\n", reason);
+
+
 }
 
 
@@ -173,8 +189,10 @@ static void bt_ready(void)
 	if (IS_ENABLED(CONFIG_SETTINGS)) {
 		settings_load();
 	}
-						//BT_LE_ADV_OPT_CONNECTABLE??
-	err = bt_le_adv_start(BT_LE_ADV_CONN_ONE_TIME, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+						//BT_LE_ADV_OPT_CONNECTABLE ??
+//	err = bt_le_adv_start(BT_LE_ADV_CONN_ONE_TIME, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+
 	if (err) {
 		printk("Advertising failed to start (err %d)\n", err);
 		return;
@@ -211,20 +229,7 @@ int ble_init(void)
 	}
 
 	bt_ready();
-
 	bt_gatt_cb_register(&gatt_callbacks);
-	//bt_conn_auth_cb_register(&auth_cb_display);
-
-	/*
-	vnd_ind_attr = bt_gatt_find_by_uuid(vnd_svc.attrs, vnd_svc.attr_count, &vnd_enc_uuid.uuid);
-	bt_uuid_to_str(&vnd_enc_uuid.uuid, str, sizeof(str));
-	printk("Indicate VND attr %p (UUID %s)\n", vnd_ind_attr, str);
-	*/
-
-	/* Implement notification. At the moment there is no suitable way
-	 * of starting delayed work so we do it here
-	 */
-
 	return 0;
 }
 

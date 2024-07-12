@@ -15,7 +15,6 @@ target_sources(app PRIVATE
 	src/ws2812/ws2812.c
 	src/ws2812/drivers/ws2812_nrfx.c
 	src/ble.c
-	src/cts.c
 )
 
 zephyr_include_directories(
