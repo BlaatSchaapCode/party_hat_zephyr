@@ -42,7 +42,7 @@
 nrfx_pwm_t pwm = NRFX_PWM_INSTANCE(0);
 
 
-uint16_t ws2812_data[pwm_len + 1];
+volatile uint16_t ws2812_data[pwm_len + 1];
 
 
 nrf_pwm_sequence_t seq = { .values.p_raw = ws2812_data, .length = pwm_len,
@@ -84,6 +84,8 @@ void ws2812_init() {
 	config.output_pins[3] = WS2812_PIN3;// | NRFX_PWM_PIN_INVERTED;
 	config.step_mode = NRF_PWM_STEP_AUTO;
 
+
+	nrfx_pwm_uninit(&pwm);
     nrfx_pwm_init(&pwm, &config, pwm_handler, NULL);
 
 }

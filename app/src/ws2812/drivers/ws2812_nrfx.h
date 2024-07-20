@@ -46,7 +46,7 @@ SOFTWARE.
 #define reset_time	(32 * 8)
 
 
-extern uint16_t ws2812_data[pwm_len + 1];
+extern volatile uint16_t ws2812_data[pwm_len + 1];
 
 
 // On the nRF52 series, we can output the signal on any pin
