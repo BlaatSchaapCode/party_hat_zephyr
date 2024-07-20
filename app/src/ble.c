@@ -43,24 +43,28 @@ void set_speed(int16_t);
 #define BT_UUID_CUSTOM_SERVICE_VAL BT_UUID_128_ENCODE(0x65dbc53e, 0x0000, 0x4422, 0x947c, 0xf016c0e0af10)
 
 
-static const struct bt_uuid_128 vnd_srv_uuid = BT_UUID_INIT_128(
+static const struct bt_uuid_128 hat_srv_uuid = BT_UUID_INIT_128(
 		BT_UUID_CUSTOM_SERVICE_VAL
 	);
 
-static const struct bt_uuid_128 vnd_chr_rgb_uuid = BT_UUID_INIT_128(
+static const struct bt_uuid_128 hat_chr_rgb_uuid = BT_UUID_INIT_128(
 		BT_UUID_128_ENCODE(0x65dbc53e, 0x0001, 0x4422, 0x947c, 0xf016c0e0af10)
 	);
 
 
-static const struct bt_uuid_128 vnd_chr_spd_uuid = BT_UUID_INIT_128(
+static const struct bt_uuid_128 hat_chr_spd_uuid = BT_UUID_INIT_128(
 		BT_UUID_128_ENCODE(0x65dbc53e, 0x0002, 0x4422, 0x947c, 0xf016c0e0af10)
 	);
 
-static const struct bt_uuid_128 vnd_chr_bat_uuid = BT_UUID_INIT_128(
-		BT_UUID_128_ENCODE(0x65dbc53e, 0x0100, 0x4422, 0x947c, 0xf016c0e0af10)
+static const struct bt_uuid_128 hat_dir_spd_uuid = BT_UUID_INIT_128(
+		BT_UUID_128_ENCODE(0x65dbc53e, 0x0003, 0x4422, 0x947c, 0xf016c0e0af10)
 	);
 
-#define VND_MAX_LEN 20
+static const struct bt_uuid_128 hat_chr_bat_uuid = BT_UUID_INIT_128(
+		BT_UUID_128_ENCODE(0x65dbc53e, 0x0100, 0x4422, 0x947c, 0xf016c0e0af10)
+	);
+ // 0x2B18
+#define hat_MAX_LEN 20
 
 
 static ssize_t read_rgb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
@@ -107,6 +111,27 @@ static ssize_t write_spd(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 
 
 
+static ssize_t read_dir(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+			void *buf, uint16_t len, uint16_t offset){
+
+	extern bool get_direction();
+	bool dir =  get_direction();;
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, &dir, sizeof(dir));
+}
+
+
+static ssize_t write_dir(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+			 const void *buf, uint16_t len, uint16_t offset,
+			 uint8_t flags) {
+
+	extern void set_direction(bool direction); 
+	set_direction ( *(bool*)(buf) );
+	
+	return len;
+}
+
+
+
 static ssize_t read_bat(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			void *buf, uint16_t len, uint16_t offset){
 	uint16_t voltage = adc_measure();
@@ -144,11 +169,20 @@ const struct bt_gatt_cpf m_bat_cpf = {
 	0x0001, // ?? 
 }; 
 
-/* Vendor Primary Service Declaration */
-BT_GATT_SERVICE_DEFINE(vnd_svc,
+const struct bt_gatt_cpf m_dir_cpf = {
+	0x01 , // bool
+	0 ,   // *10⁻⁰
+	0x2700 , // unitless 
+	0x0001 , // Bluetooth SIG assigned numbers 
+	0x0001, // ?? 
+}; 
 
-	BT_GATT_PRIMARY_SERVICE(&vnd_srv_uuid.uuid),
-		BT_GATT_CHARACTERISTIC(&vnd_chr_rgb_uuid.uuid,
+
+/* Vendor Primary Service Declaration */
+BT_GATT_SERVICE_DEFINE(hat_svc,
+
+	BT_GATT_PRIMARY_SERVICE(&hat_srv_uuid.uuid),
+		BT_GATT_CHARACTERISTIC(&hat_chr_rgb_uuid.uuid,
 					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE | BT_GATT_CHRC_NOTIFY,
 					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 					   read_rgb, write_rgb, NULL),
@@ -156,15 +190,21 @@ BT_GATT_SERVICE_DEFINE(vnd_svc,
 					BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 			BT_GATT_CUD("RGB", BT_GATT_PERM_READ),
 
-	BT_GATT_CHARACTERISTIC(&vnd_chr_spd_uuid.uuid,
+	BT_GATT_CHARACTERISTIC(&hat_chr_spd_uuid.uuid,
 					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE ,
 					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 					   read_spd, write_spd, NULL),
 			BT_GATT_CUD("Speed", BT_GATT_PERM_READ),
 			BT_GATT_CPF(&m_spd_cpf),
 
+	BT_GATT_CHARACTERISTIC(&hat_chr_spd_uuid.uuid,
+					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE ,
+					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+					   read_dir, write_dir, NULL),
+			BT_GATT_CUD("Direction", BT_GATT_PERM_READ),
+			BT_GATT_CPF(&m_dir_cpf),
 
-	BT_GATT_CHARACTERISTIC(&vnd_chr_bat_uuid.uuid,
+	BT_GATT_CHARACTERISTIC(&hat_chr_bat_uuid.uuid,
 					   BT_GATT_CHRC_READ |  BT_GATT_CHRC_NOTIFY,
 					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 					   read_bat, NULL , NULL),
@@ -172,9 +212,6 @@ BT_GATT_SERVICE_DEFINE(vnd_svc,
 					BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 			BT_GATT_CUD("Voltage", BT_GATT_PERM_READ),
 			BT_GATT_CPF(&m_bat_cpf),
-//
-
-
 );
 
 static const struct bt_data ad[] = {
@@ -200,9 +237,6 @@ static void connected(struct bt_conn *conn, uint8_t err)
 {
 	if (err) {
 		printk("Connection failed (err 0x%02x)\n", err);
-
-
-
 	} else {
 		printk("Connected\n");
 	}
@@ -256,9 +290,9 @@ static void bas_notify(void) {
 
 void bat_notify(void) {	
 	int16_t voltage = adc_measure();
-//	int ret = bt_gatt_notify(NULL, &vnd_svc.attrs[7], &voltage, sizeof(voltage));
+//	int ret = bt_gatt_notify(NULL, &hat_svc.attrs[7], &voltage, sizeof(voltage));
 
-	int ret = bt_gatt_notify_uuid(NULL, &vnd_chr_bat_uuid.uuid,  vnd_svc.attrs,  &voltage, sizeof(voltage));
+	int ret = bt_gatt_notify_uuid(NULL, &hat_chr_bat_uuid.uuid,  hat_svc.attrs,  &voltage, sizeof(voltage));
 
 	printf("bat not returned %X\n");
 }
@@ -267,7 +301,7 @@ void bat_notify(void) {
 
 int ble_init(void)
 {
-	struct bt_gatt_attr *vnd_ind_attr;
+	struct bt_gatt_attr *hat_ind_attr;
 	char str[BT_UUID_STR_LEN];
 	int err;
 

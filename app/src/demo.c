@@ -50,6 +50,15 @@ void set_speed(uint16_t speed) {
 	m_speed = speed;
 }
 
+
+bool get_direction() {
+	return m_direction;
+}
+
+void set_direction(bool direction) {
+	m_direction = direction;
+}
+
 void delay_ms(uint32_t milliseconds) {
 		k_sleep(K_MSEC(milliseconds));
 }
