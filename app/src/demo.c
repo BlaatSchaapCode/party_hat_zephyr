@@ -39,7 +39,10 @@
 
 #include <stdio.h>
 
+#include "bat.h"
+
 static uint16_t m_speed = 100;
+static bool m_direction = false;
 
 uint16_t get_speed() {
 	return m_speed;
@@ -72,8 +75,9 @@ typedef struct {
 
 #define LED_COUNT (19)
 
-/*
-rgb_t colours[LED_COUNT]  = {
+
+
+static volatile rgb_t m_colours[LED_COUNT]  = {
 			{ 0x3F, 0x00, 0x00},
 			{ 0x3F, 0x00, 0x14},
 			{ 0x3F, 0x00, 0x28},
@@ -94,11 +98,7 @@ rgb_t colours[LED_COUNT]  = {
 			{ 0x3F, 0x28, 0x00},
 			{ 0x3F, 0x14, 0x00},
 };
-*/
 
-
-//static void*m_colours;
-static rgb_t*m_colours;
 
 void get_leds(void**leds, int *size) {
 	*leds=(void*)(m_colours+1);
@@ -118,49 +118,43 @@ void ws2812_demo() {
 //		};
 
 
-// So it works defined here, but not globally????
-
-rgb_t colours[LED_COUNT]  = {
-			{ 0x3F, 0x00, 0x00},
-			{ 0x3F, 0x00, 0x14},
-			{ 0x3F, 0x00, 0x28},
-			{ 0x3F, 0x00, 0x3C},
-			{ 0x2E, 0x00, 0x3F},
-			{ 0x1A, 0x00, 0x3F},
-			{ 0x06, 0x00, 0x3F},
-			{ 0x00, 0x0D, 0x3F},
-			{ 0x00, 0x21, 0x3F},
-			{ 0x00, 0x35, 0x3F},
-			{ 0x00, 0x3F, 0x35},
-			{ 0x00, 0x3F, 0x21},
-			{ 0x00, 0x3F, 0x0D},
-			{ 0x06, 0x3F, 0x00},
-			{ 0x1A, 0x3F, 0x00},
-			{ 0x2E, 0x3F, 0x00},
-			{ 0x3F, 0x3C, 0x00},
-			{ 0x3F, 0x28, 0x00},
-			{ 0x3F, 0x14, 0x00},
-};
-	m_colours=colours;
-
 	rgb_t temp;
 
 	puts("Starting Demo");
 
+	int count = 0;
+
 	while (1) {
 		while (ws2812_is_busy());
-		ws2812_fill_buffer_decompress(0, sizeof(colours), (uint8_t *)&colours);
-		ws2812_apply(sizeof(colours));
+		ws2812_fill_buffer_decompress(0, sizeof(m_colours), (uint8_t *)&m_colours);
+		ws2812_apply(sizeof(m_colours));
+
+
+		count++;
+		if (!(count % 100)) m_direction = !m_direction;
+
 		if (m_speed) {
 			delay_ms(m_speed);
-//			temp=colours[0];
-			temp=colours[1];
-			// Skipping the first led, to make it 18 in stead of 19
-			// For some reason if my loop starts at 1 they don't work **TODO**
-			for (int i = 0; i < (LED_COUNT-1); i++) {
-				colours[i]=colours[i+1];
+
+			if (m_direction) {
+				m_colours[0] = ORANGE;
+				temp=m_colours[1];
+				// Skipping the first led, to make it 18 in stead of 19
+				// For some reason if my loop starts at 1 they don't work **TODO**
+				for (int i = 1; i < (LED_COUNT-1); i++) {
+					m_colours[i]=m_colours[i+1];
+				}
+				m_colours[(LED_COUNT-1)]=temp;
+			} else {
+				m_colours[0] = PURPLE;
+				temp=m_colours[LED_COUNT-1]; 
+				for (int i = LED_COUNT-1; i > 1; i--) {
+					m_colours[i]=m_colours[i-1];
+				}
+				m_colours[1] = temp;
+
 			}
-			colours[(LED_COUNT-1)]=temp;
+
 		} else {
 			delay_ms(100);
 		}
@@ -169,3 +163,18 @@ rgb_t colours[LED_COUNT]  = {
 
 
 
+void ble_led_process(struct k_timer *work) {
+	rgb_t temp;
+	while (ws2812_is_busy());
+	ws2812_fill_buffer_decompress(0, sizeof(m_colours), (uint8_t *)&m_colours);
+	ws2812_apply(sizeof(m_colours));
+	while (ws2812_is_busy());
+
+	temp=m_colours[1];
+	// Skipping the first led, to make it 18 in stead of 19
+	// For some reason if my loop starts at 1 they don't work **TODO**
+	for (int i = 0; i < (LED_COUNT-1); i++) {
+		m_colours[i]=m_colours[i+1];
+	}
+	m_colours[(LED_COUNT-1)]=temp;
+}

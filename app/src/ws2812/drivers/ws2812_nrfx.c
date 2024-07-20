@@ -39,6 +39,9 @@
 
 #include "ws2812_nrfx.h"
 
+#include <zephyr/kernel.h>
+#include <stdio.h>
+
 nrfx_pwm_t pwm = NRFX_PWM_INSTANCE(0);
 
 
@@ -84,8 +87,12 @@ void ws2812_init() {
 	config.output_pins[3] = WS2812_PIN3;// | NRFX_PWM_PIN_INVERTED;
 	config.step_mode = NRF_PWM_STEP_AUTO;
 
-    nrfx_pwm_init(&pwm, &config, pwm_handler, NULL);
 
+	int result = nrfx_pwm_init(&pwm, &config, pwm_handler, NULL);
+    if (NRFX_ERROR_ALREADY == result) {
+    	nrfx_pwm_uninit(&pwm);
+    	nrfx_pwm_init(&pwm, &config, pwm_handler, NULL);
+    }
 }
 
 
@@ -97,7 +104,8 @@ void ws2812_apply(size_t size) {
 	ws2812_init();
 
 	// Zephyr!!!
-	IRQ_CONNECT(PWM0_IRQn, IRQ_PRIO_LOWEST, nrfx_pwm_0_irq_handler , 0,0);
+	IRQ_CONNECT(PWM0_IRQn, 3, nrfx_pwm_0_irq_handler , 0,0);
+
 
 	m_busy = true;
 

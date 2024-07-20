@@ -27,7 +27,10 @@
 
 #include <stdio.h>
 
-static bool m_notify_on;
+#include "bat.h"
+
+static bool m_rgb_notify_on;
+static bool m_bat_notify_on;
 
 
 // Note, quick and dirty for testing
@@ -53,9 +56,12 @@ static const struct bt_uuid_128 vnd_chr_spd_uuid = BT_UUID_INIT_128(
 		BT_UUID_128_ENCODE(0x65dbc53e, 0x0002, 0x4422, 0x947c, 0xf016c0e0af10)
 	);
 
+static const struct bt_uuid_128 vnd_chr_bat_uuid = BT_UUID_INIT_128(
+		BT_UUID_128_ENCODE(0x65dbc53e, 0x0100, 0x4422, 0x947c, 0xf016c0e0af10)
+	);
+
 #define VND_MAX_LEN 20
 
-static uint8_t vnd_value[VND_MAX_LEN + 1] = { 'V', 'e', 'n', 'd', 'o', 'r'};
 
 static ssize_t read_rgb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			void *buf, uint16_t len, uint16_t offset){
@@ -99,17 +105,41 @@ static ssize_t write_spd(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 	return len;
 }
 
+
+
+static ssize_t read_bat(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+			void *buf, uint16_t len, uint16_t offset){
+	uint16_t voltage = adc_measure();
+
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, &voltage, sizeof(voltage));
+}
 //--
 
-static void vnd_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
+static void rgb_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
 {
-	printf("vnd_ccc_cfg_changed, value %04X\n", value);
-	m_notify_on = (value == BT_GATT_CCC_NOTIFY) ? 1 : 0;
+	printf("rgb_ccc_cfg_changed, value %04X\n", value);
+	m_rgb_notify_on = (value == BT_GATT_CCC_NOTIFY) ? 1 : 0;
 }
-const struct bt_gatt_cpf m_cpf = {
+
+static void bat_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
+{
+	printf("bat_ccc_cfg_changed, value %04X\n", value);
+	m_bat_notify_on = (value == BT_GATT_CCC_NOTIFY) ? 1 : 0;
+}
+
+const struct bt_gatt_cpf m_spd_cpf = {
 	0x06 , // uint16
 	-3 ,   // *10⁻³
 	0x2703 , // second 
+	0x0001 , // Bluetooth SIG assigned numbers 
+	0x0001, // ?? 
+}; 
+
+
+const struct bt_gatt_cpf m_bat_cpf = {
+	0x06 , // uint16
+	-3 ,   // *10⁻³
+	0x2728 , // volt 
 	0x0001 , // Bluetooth SIG assigned numbers 
 	0x0001, // ?? 
 }; 
@@ -122,16 +152,28 @@ BT_GATT_SERVICE_DEFINE(vnd_svc,
 					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE | BT_GATT_CHRC_NOTIFY,
 					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 					   read_rgb, write_rgb, NULL),
-			BT_GATT_CCC(vnd_ccc_cfg_changed,
+			BT_GATT_CCC(rgb_ccc_cfg_changed,
 					BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 			BT_GATT_CUD("RGB", BT_GATT_PERM_READ),
 
 	BT_GATT_CHARACTERISTIC(&vnd_chr_spd_uuid.uuid,
-					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE | BT_GATT_CHRC_NOTIFY,
+					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE ,
 					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 					   read_spd, write_spd, NULL),
 			BT_GATT_CUD("Speed", BT_GATT_PERM_READ),
-			BT_GATT_CPF(&m_cpf),
+			BT_GATT_CPF(&m_spd_cpf),
+
+
+	BT_GATT_CHARACTERISTIC(&vnd_chr_bat_uuid.uuid,
+					   BT_GATT_CHRC_READ |  BT_GATT_CHRC_NOTIFY,
+					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+					   read_bat, NULL , NULL),
+			BT_GATT_CCC(bat_ccc_cfg_changed,
+					BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+			BT_GATT_CUD("Voltage", BT_GATT_PERM_READ),
+			BT_GATT_CPF(&m_bat_cpf),
+//
+
 
 );
 
@@ -201,17 +243,24 @@ static void bt_ready(void)
 	printk("Advertising successfully started\n");
 }
 
-static void bas_notify(void)
-{
-	uint8_t battery_level = bt_bas_get_battery_level();
+static void bas_notify(void) {
+	int16_t voltage = adc_measure();
+	voltage -= 3300;
 
-	battery_level--;
-
-	if (!battery_level) {
-		battery_level = 100U;
-	}
-
+	// Note: we need to determine the discharge curve, this is a placeholder.
+	int  battery_level = (voltage * 100 ) / (4200 - 3300) ;
+	if (battery_level < 0) battery_level = 0;
+	if (battery_level > 100) battery_level = 100;
 	bt_bas_set_battery_level(battery_level);
+}
+
+void bat_notify(void) {	
+	int16_t voltage = adc_measure();
+//	int ret = bt_gatt_notify(NULL, &vnd_svc.attrs[7], &voltage, sizeof(voltage));
+
+	int ret = bt_gatt_notify_uuid(NULL, &vnd_chr_bat_uuid.uuid,  vnd_svc.attrs,  &voltage, sizeof(voltage));
+
+	printf("bat not returned %X\n");
 }
 
 
@@ -233,10 +282,12 @@ int ble_init(void)
 	return 0;
 }
 
-void ble_process(void) {
+
+
+
+void ble_battery_process(void) {
 	/* Battery level simulation */
 	bas_notify();
-
-
+	bat_notify();
 }
 
