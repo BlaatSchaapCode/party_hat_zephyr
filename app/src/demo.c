@@ -39,8 +39,8 @@
 
 #include <stdio.h>
 
-static uint16_t m_speed = 100;
-static bool m_direction = true;
+static volatile uint16_t m_speed = 100;
+static volatile bool m_direction = true;
 
 uint16_t get_speed() {
 	return m_speed;
@@ -82,128 +82,74 @@ typedef struct {
 
 #define LED_COUNT (19)
 
-/*
-rgb_t m_colours[LED_COUNT]  = {
-			{ 0x3F, 0x00, 0x00},
-			{ 0x3F, 0x00, 0x14},
-			{ 0x3F, 0x00, 0x28},
-			{ 0x3F, 0x00, 0x3C},
-			{ 0x2E, 0x00, 0x3F},
-			{ 0x1A, 0x00, 0x3F},
-			{ 0x06, 0x00, 0x3F},
-			{ 0x00, 0x0D, 0x3F},
-			{ 0x00, 0x21, 0x3F},
-			{ 0x00, 0x35, 0x3F},
-			{ 0x00, 0x3F, 0x35},
-			{ 0x00, 0x3F, 0x21},
-			{ 0x00, 0x3F, 0x0D},
-			{ 0x06, 0x3F, 0x00},
-			{ 0x1A, 0x3F, 0x00},
-			{ 0x2E, 0x3F, 0x00},
-			{ 0x3F, 0x3C, 0x00},
-			{ 0x3F, 0x28, 0x00},
-			{ 0x3F, 0x14, 0x00},
-};
-*/
-
-
 volatile static rgb_t m_colours[LED_COUNT]  = {
-			{ 0x3F, 0x00, 0x00},
-			{ 0x3F, 0x00, 0x14},
-			{ 0x3F, 0x00, 0x28},
-			{ 0x3F, 0x00, 0x3C},
-			{ 0x2E, 0x00, 0x3F},
-			{ 0x1A, 0x00, 0x3F},
-			{ 0x06, 0x00, 0x3F},
-			{ 0x00, 0x0D, 0x3F},
-			{ 0x00, 0x21, 0x3F},
-			{ 0x00, 0x35, 0x3F},
-			{ 0x00, 0x3F, 0x35},
-			{ 0x00, 0x3F, 0x21},
-			{ 0x00, 0x3F, 0x0D},
-			{ 0x06, 0x3F, 0x00},
-			{ 0x1A, 0x3F, 0x00},
-			{ 0x2E, 0x3F, 0x00},
-			{ 0x3F, 0x3C, 0x00},
-			{ 0x3F, 0x28, 0x00},
-			{ 0x3F, 0x14, 0x00},
+	{0x00, 0x00, 0x00},	
+	{0x19, 0x00, 0x00},
+	{0x19, 0x08, 0x00},
+	{0x19, 0x11, 0x00},
+	{0x19, 0x19, 0x00},
+	{0x10, 0x19, 0x00},
+	{0x08, 0x19, 0x00},
+	{0x00, 0x19, 0x00},
+	{0x00, 0x19, 0x08},
+	{0x00, 0x19, 0x11},
+	{0x00, 0x19, 0x19},
+	{0x00, 0x10, 0x19},
+	{0x00, 0x08, 0x19},
+	{0x00, 0x00, 0x19},
+	{0x08, 0x00, 0x19},
+	{0x11, 0x00, 0x19},
+	{0x19, 0x00, 0x19},
+	{0x19, 0x00, 0x10},
+	{0x19, 0x00, 0x08},
 };
-
-
 
 void get_leds(void**leds, int *size) {
 	*leds=(void*)(m_colours+1);
 	*size=(LED_COUNT * sizeof(rgb_t))-sizeof(rgb_t);
 }
 
-
 void ws2812_demo() {
-//	rgb_t m_colours[LED_COUNT]  = {
-//		RED,ORANGE,YELLOW,   // 3
-//		GREEN,CYAN,BLUE,     // 6
-//		PURPLE,RED, ORANGE,  // 9
-//		YELLOW, GREEN,CYAN, // 12
-//		BLUE, PURPLE, RED,  // 15
-//		YELLOW, GREEN, BLUE, // 18
-//		PURPLE, // 19
-//		};
-
-
-// So it works defined here, but not globally????
-
 	rgb_t temp;
-
 	puts("Starting Demo");
 
-	//test
-	static int count = 0;
-
 	while (1) {
-		//while (ws2812_is_busy());
-		ws2812_fill_buffer_decompress(0, sizeof(m_colours), (uint8_t *)&m_colours);
+		int key;
+		key = irq_lock();
+		rgb_t copy_of_colours[LED_COUNT];
+		memcpy(copy_of_colours,m_colours, sizeof(m_colours));
+		irq_unlock(key);
 
+		ws2812_fill_buffer_decompress(0, sizeof(copy_of_colours), copy_of_colours);
+		ws2812_apply(sizeof(copy_of_colours));
 
-		// so if I put a breakpoint between decompress and apply, and let it run again
-		// it magically starts working.
-		//__DMB();
-		//__DSB();
-		//__ISB();
-		//delay_ms(1);
-		//k_yield();
-		// None of these appear to work. 
-		// This was all with gcc 14 
-		// using the gcc 9 compiler appears to work???
-
-//		testing changing direction
-//		count++;
-//		if (!(count%42)) m_direction = ! m_direction;
-
-
-		ws2812_apply(sizeof(m_colours));
 		if (m_speed) {
-			delay_ms(m_speed);
 
-//				count++;
-//				if (!(count%42)) m_direction = ! m_direction;
+
 
 			if (m_direction) {
-				m_colours[0] = ORANGE;
-				temp=m_colours[1];
+				copy_of_colours[0] = ORANGE;
+				temp=copy_of_colours[1];
 				for (int i = 1; i < (LED_COUNT-1); i++) {
-					m_colours[i]=m_colours[i+1];
+					copy_of_colours[i]=copy_of_colours[i+1];
 				}
-				m_colours[(LED_COUNT-1)]=temp;
+				copy_of_colours[(LED_COUNT-1)]=temp;
 			} else {
-				m_colours[0] = CYAN;
-				temp=m_colours[LED_COUNT-1];
+				copy_of_colours[0] = CYAN;
+				temp=copy_of_colours[LED_COUNT-1];
 				for (int i = LED_COUNT-1; i > (1); i--) {
-					m_colours[i]=m_colours[i-1];
+					copy_of_colours[i]=copy_of_colours[i-1];
 				}
-				m_colours[1]=temp;
+				copy_of_colours[1]=temp;
 			}
 
+			key = irq_lock();
+			memcpy((void*)m_colours, copy_of_colours, sizeof(m_colours));
+			irq_unlock(key);
+
+			delay_ms(m_speed);
 		} else {
-			delay_ms(1000);
+			delay_ms(250);
 		}
 	}
 }

@@ -56,7 +56,7 @@ static const struct bt_uuid_128 hat_chr_spd_uuid = BT_UUID_INIT_128(
 		BT_UUID_128_ENCODE(0x65dbc53e, 0x0002, 0x4422, 0x947c, 0xf016c0e0af10)
 	);
 
-static const struct bt_uuid_128 hat_dir_spd_uuid = BT_UUID_INIT_128(
+static const struct bt_uuid_128 hat_chr_dir_uuid = BT_UUID_INIT_128(
 		BT_UUID_128_ENCODE(0x65dbc53e, 0x0003, 0x4422, 0x947c, 0xf016c0e0af10)
 	);
 
@@ -197,7 +197,7 @@ BT_GATT_SERVICE_DEFINE(hat_svc,
 			BT_GATT_CUD("Speed", BT_GATT_PERM_READ),
 			BT_GATT_CPF(&m_spd_cpf),
 
-	BT_GATT_CHARACTERISTIC(&hat_chr_spd_uuid.uuid,
+	BT_GATT_CHARACTERISTIC(&hat_chr_dir_uuid.uuid,
 					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE ,
 					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 					   read_dir, write_dir, NULL),
@@ -220,7 +220,7 @@ static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_UUID128_ALL, BT_UUID_CUSTOM_SERVICE_VAL ),
 };
 
-static const struct bt_data sd[] = {
+static struct bt_data sd[] = {
 	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
@@ -242,8 +242,28 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	}
 }
 
+
+void refresh_advertising_data(struct k_work *work) {
+// https://devzone.nordicsemi.com/f/nordic-q-a/90277/using-bt_le_adv_update_data/473767?focus=true
+	struct bt_data new_sd[] = {
+		BT_DATA(BT_DATA_NAME_COMPLETE, bt_get_name(), strlen(bt_get_name()) ),
+	};
+	*sd = *new_sd;
+	int 
+	err = bt_le_adv_update_data(ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	printf("Update advertising status %d\n",err);
+
+	printf("Device name %s\n",	bt_get_name ());
+
+}
+K_WORK_DEFINE(refresh_advertising_data_work, refresh_advertising_data);
 static void disconnected(struct bt_conn *conn, uint8_t reason) {
 	printk("Disconnected (reason 0x%02x)\n", reason);
+
+
+	// Update the ID in the advertising data, because the user might have changed it
+	// when they were connected.
+	k_work_submit(&refresh_advertising_data_work);
 
 
 }
@@ -265,6 +285,12 @@ static void bt_ready(void)
 	if (IS_ENABLED(CONFIG_SETTINGS)) {
 		settings_load();
 	}
+
+	struct bt_data new_sd[] = {
+		BT_DATA(BT_DATA_NAME_COMPLETE, bt_get_name(), strlen(bt_get_name()) ),
+	};
+	*sd = *new_sd;
+
 						//BT_LE_ADV_OPT_CONNECTABLE ??
 //	err = bt_le_adv_start(BT_LE_ADV_CONN_ONE_TIME, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
 	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
@@ -301,8 +327,6 @@ void bat_notify(void) {
 
 int ble_init(void)
 {
-	struct bt_gatt_attr *hat_ind_attr;
-	char str[BT_UUID_STR_LEN];
 	int err;
 
 	err = bt_enable(NULL);

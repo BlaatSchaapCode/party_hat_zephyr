@@ -41,16 +41,14 @@
 
 nrfx_pwm_t pwm = NRFX_PWM_INSTANCE(0);
 
+volatile uint16_t ws2812_data[pwm_len + 32];
 
-volatile uint16_t ws2812_data[pwm_len + 1];
-
-
-nrf_pwm_sequence_t seq = { .values.p_raw = ws2812_data, .length = pwm_len,
-		.repeats = 0, .end_delay = 32};
+nrf_pwm_sequence_t seq = { .values.p_raw = ws2812_data, .length = pwm_len + 32,
+		.repeats = 0, .end_delay = 32 };
 
 static volatile bool m_busy = false;
 
-static void pwm_handler(nrfx_pwm_evt_type_t event_type, void* context) {
+static void pwm_handler(nrfx_pwm_evt_type_t event_type, void *context) {
 	if (event_type == NRFX_PWM_EVT_FINISHED) {
 		m_busy = false;
 //		nrfx_pwm_uninit(&pwm);
@@ -59,15 +57,6 @@ static void pwm_handler(nrfx_pwm_evt_type_t event_type, void* context) {
 }
 
 void ws2812_init() {
-	nrf_gpio_pin_clear(WS2812_PIN0);
-	nrf_gpio_pin_clear(WS2812_PIN1);
-	nrf_gpio_pin_clear(WS2812_PIN2);
-	nrf_gpio_pin_clear(WS2812_PIN3);
-	nrf_gpio_cfg_output(WS2812_PIN0);
-	nrf_gpio_cfg_output(WS2812_PIN1);
-	nrf_gpio_cfg_output(WS2812_PIN2);
-	nrf_gpio_cfg_output(WS2812_PIN3);
-
 	nrfx_pwm_config_t config;
 	config.base_clock = NRF_PWM_CLK_8MHz;
 	config.top_value = 10; // clock = 8 MHz, we need a 800 kHz signal
@@ -78,18 +67,17 @@ void ws2812_init() {
 	// We should not indicate the channel polarisation here,
 	// But only by setting bit 15 of the value.
 	// Setting it here too will cause the first LED of the chain to fail
-	config.output_pins[0] = WS2812_PIN0;// | NRFX_PWM_PIN_INVERTED;
-	config.output_pins[1] = WS2812_PIN1;// | NRFX_PWM_PIN_INVERTED;
-	config.output_pins[2] = WS2812_PIN2;// | NRFX_PWM_PIN_INVERTED;
-	config.output_pins[3] = WS2812_PIN3;// | NRFX_PWM_PIN_INVERTED;
+	config.output_pins[0] = WS2812_PIN0;	// | NRFX_PWM_PIN_INVERTED;
+	config.output_pins[1] = config.output_pins[2] = config.output_pins[3] = -1;
+
 	config.step_mode = NRF_PWM_STEP_AUTO;
 
-
 	nrfx_pwm_uninit(&pwm);
-    nrfx_pwm_init(&pwm, &config, pwm_handler, NULL);
+	nrf_gpio_pin_clear(WS2812_PIN0);
+	nrf_gpio_cfg_output(WS2812_PIN0);
+	nrfx_pwm_init(&pwm, &config, pwm_handler, NULL);
 
 }
-
 
 bool ws2812_is_busy() {
 	return m_busy;
@@ -99,7 +87,7 @@ void ws2812_apply(size_t size) {
 	ws2812_init();
 
 	// Zephyr!!!
-	IRQ_CONNECT(PWM0_IRQn, IRQ_PRIO_LOWEST, nrfx_pwm_0_irq_handler , 0,0);
+	IRQ_CONNECT(PWM0_IRQn, IRQ_PRIO_LOWEST, nrfx_pwm_0_irq_handler, 0, 0);
 
 	m_busy = true;
 
@@ -109,10 +97,8 @@ void ws2812_apply(size_t size) {
 		// in stead of 0?
 		//ws2812_data[(size * 8) + 1] = 10;
 		//ws2812_data[(size * 8) ] = 10;
-		ws2812_data[(size * 8) ] = 0x8000;
-		seq.length = (size * 8) + 1;
-
-		
+//		ws2812_data[(size * 8) ] = 0x8000;
+//		seq.length = (size * 8) + 1;
 
 		//nrfx_pwm_simple_playback(&pwm, &seq, 1, NRFX_PWM_FLAG_LOOP);
 		nrfx_pwm_simple_playback(&pwm, &seq, 1, NRFX_PWM_FLAG_STOP);
@@ -123,9 +109,9 @@ void ws2812_apply(size_t size) {
 		// not aware we are using the pwm peripheral through nrfx
 		// (it is set to nrfx so zephyr won't touch it, but it does not know
 		//  it is busy) 
-		while ( ws2812_is_busy() ) ; 
+		while (ws2812_is_busy())
+			;
 	}
 
 }
-
 

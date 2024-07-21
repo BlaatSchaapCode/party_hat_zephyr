@@ -38,15 +38,16 @@ SOFTWARE.
 
 
 // https://devzone.nordicsemi.com/f/nordic-q-a/26371/pwm-driver---invert-pin/103775#103775
-#define WS2812_VAL_0 0x8002
-#define WS2812_VAL_1 0x8008
+#define WS2812_VAL_0 		0x8002
+#define WS2812_VAL_1 		0x8008
+#define WS2812_VAL_RESET 	0x8000
 
 
-#define pwm_len		(3072 * 4)  // 4 Clockless channels of either 96 RGBW or 128 RGB leds
-#define reset_time	(32 * 8)
+#define pwm_len		(20 * 3 * 8)  
 
 
-extern volatile uint16_t ws2812_data[pwm_len + 1];
+
+extern volatile uint16_t ws2812_data[pwm_len + 32];
 
 
 // On the nRF52 series, we can output the signal on any pin
@@ -54,18 +55,6 @@ extern volatile uint16_t ws2812_data[pwm_len + 1];
 // for TIM2.
 #ifndef WS2812_PIN0
 #define WS2812_PIN0 (3)
-#endif
-
-#ifndef WS2812_PIN1
-#define WS2812_PIN1 (26)
-#endif
-
-#ifndef WS2812_PIN2
-#define WS2812_PIN2 (27)
-#endif
-
-#ifndef WS2812_PIN3
-#define WS2812_PIN3 (28)
 #endif
 
 
