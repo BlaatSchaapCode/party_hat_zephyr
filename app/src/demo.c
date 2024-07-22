@@ -109,6 +109,21 @@ void get_leds(void**leds, int *size) {
 	*size=(LED_COUNT * sizeof(rgb_t))-sizeof(rgb_t);
 }
 
+
+void ws2812_blue(){
+		rgb_t blue[LED_COUNT] ={
+			BLUE, BLUE, BLUE,
+			BLUE, BLUE, BLUE,
+			BLUE, BLUE, BLUE,
+			BLUE, BLUE, BLUE,
+			BLUE, BLUE, BLUE,
+			BLUE, BLUE, BLUE,
+			};
+		ws2812_fill_buffer_decompress(0, sizeof(blue), blue);
+		ws2812_apply(sizeof(blue));
+}
+
+
 void ws2812_demo() {
 	rgb_t temp;
 	puts("Starting Demo");

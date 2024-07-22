@@ -13,7 +13,7 @@
 
 #include <stdio.h>
 
-
+void ws2812_blue(void);
 void ws2812_demo(void);
 int ble_init(void);
 
@@ -29,13 +29,20 @@ void arch_system_halt(unsigned int reason){
 	NVIC_SystemReset();
 }
 
+
+
+
+
+
 int main(void) {
+	ws2812_blue();
 	ble_init();
 	adc_init();
 
-	// Measure Battery Every Second
+	// Measure Battery Every 10 sec
 	k_timer_start(&ble_battery_timer, K_SECONDS(10), K_SECONDS(10));
 
+ 	
 	ws2812_demo();
  
 
