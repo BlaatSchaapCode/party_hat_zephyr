@@ -16,6 +16,7 @@ target_sources(app PRIVATE
 	src/ws2812/drivers/ws2812_nrfx.c
 	src/ble.c
 	src/bat.c
+	src/button.c
 )
 
 zephyr_include_directories(

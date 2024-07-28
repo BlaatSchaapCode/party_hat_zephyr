@@ -6,24 +6,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr/types.h>
+#include <errno.h>
 #include <stddef.h>
 #include <string.h>
-#include <errno.h>
-#include <zephyr/sys/printk.h>
-#include <zephyr/sys/byteorder.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/printk.h>
+#include <zephyr/types.h>
 
 #include <zephyr/settings/settings.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/conn.h>
-#include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/services/bas.h>
-//#include <zephyr/bluetooth/services/hrs.h>
-//#include <zephyr/bluetooth/services/ias.h>
+#include <zephyr/bluetooth/uuid.h>
+// #include <zephyr/bluetooth/services/hrs.h>
+// #include <zephyr/bluetooth/services/ias.h>
 
 #include <stdio.h>
 
@@ -32,320 +32,329 @@
 static bool m_rgb_notify_on;
 static bool m_bat_notify_on;
 
+static bool m_connected;
+static bool m_ble_enabled;
 
 // Note, quick and dirty for testing
-void get_leds(void**leds, int *size);
+void get_leds(void **leds, int *size);
 int16_t get_speed(void);
 void set_speed(int16_t);
 
-
 // 65dbc53e-a859-4422-947c-f016c0e0af10
-#define BT_UUID_CUSTOM_SERVICE_VAL BT_UUID_128_ENCODE(0x65dbc53e, 0x0000, 0x4422, 0x947c, 0xf016c0e0af10)
+#define BT_UUID_CUSTOM_SERVICE_VAL                                             \
+  BT_UUID_128_ENCODE(0x65dbc53e, 0x0000, 0x4422, 0x947c, 0xf016c0e0af10)
 
-
-static const struct bt_uuid_128 hat_srv_uuid = BT_UUID_INIT_128(
-		BT_UUID_CUSTOM_SERVICE_VAL
-	);
+static const struct bt_uuid_128 hat_srv_uuid =
+    BT_UUID_INIT_128(BT_UUID_CUSTOM_SERVICE_VAL);
 
 static const struct bt_uuid_128 hat_chr_rgb_uuid = BT_UUID_INIT_128(
-		BT_UUID_128_ENCODE(0x65dbc53e, 0x0001, 0x4422, 0x947c, 0xf016c0e0af10)
-	);
-
+    BT_UUID_128_ENCODE(0x65dbc53e, 0x0001, 0x4422, 0x947c, 0xf016c0e0af10));
 
 static const struct bt_uuid_128 hat_chr_spd_uuid = BT_UUID_INIT_128(
-		BT_UUID_128_ENCODE(0x65dbc53e, 0x0002, 0x4422, 0x947c, 0xf016c0e0af10)
-	);
+    BT_UUID_128_ENCODE(0x65dbc53e, 0x0002, 0x4422, 0x947c, 0xf016c0e0af10));
 
 static const struct bt_uuid_128 hat_chr_dir_uuid = BT_UUID_INIT_128(
-		BT_UUID_128_ENCODE(0x65dbc53e, 0x0003, 0x4422, 0x947c, 0xf016c0e0af10)
-	);
+    BT_UUID_128_ENCODE(0x65dbc53e, 0x0003, 0x4422, 0x947c, 0xf016c0e0af10));
 
 static const struct bt_uuid_128 hat_chr_bat_uuid = BT_UUID_INIT_128(
-		BT_UUID_128_ENCODE(0x65dbc53e, 0x0100, 0x4422, 0x947c, 0xf016c0e0af10)
-	);
- // 0x2B18
+    BT_UUID_128_ENCODE(0x65dbc53e, 0x0100, 0x4422, 0x947c, 0xf016c0e0af10));
+// 0x2B18
 #define hat_MAX_LEN 20
 
-
 static ssize_t read_rgb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			void *buf, uint16_t len, uint16_t offset){
-	puts("read_rgb");
-	void *value;// = attr->user_data;
-	int size;
-	get_leds(&value,&size);
+                        void *buf, uint16_t len, uint16_t offset) {
+  puts("read_rgb");
+  void *value; // = attr->user_data;
+  int size;
+  get_leds(&value, &size);
 
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, value, size);
+  return bt_gatt_attr_read(conn, attr, buf, len, offset, value, size);
 }
 
 static ssize_t write_rgb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			 const void *buf, uint16_t len, uint16_t offset,
-			 uint8_t flags) {
-		puts("write_rgb");
+                         const void *buf, uint16_t len, uint16_t offset,
+                         uint8_t flags) {
+  puts("write_rgb");
 
-	void *value;
-	int size;
-	get_leds(&value,&size);
-	if ((offset+len)>size )
-		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
-	memcpy(value + offset, buf, len);
-	return len;
+  void *value;
+  int size;
+  get_leds(&value, &size);
+  if ((offset + len) > size)
+    return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+  memcpy(value + offset, buf, len);
+  return len;
 }
 
 //--
 static ssize_t read_spd(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			void *buf, uint16_t len, uint16_t offset){
-	uint16_t speed = get_speed();
+                        void *buf, uint16_t len, uint16_t offset) {
+  uint16_t speed = get_speed();
 
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, &speed, sizeof(speed));
+  return bt_gatt_attr_read(conn, attr, buf, len, offset, &speed, sizeof(speed));
 }
 
 static ssize_t write_spd(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			 const void *buf, uint16_t len, uint16_t offset,
-			 uint8_t flags) {
-	puts("write_spd");
+                         const void *buf, uint16_t len, uint16_t offset,
+                         uint8_t flags) {
+  puts("write_spd");
 
-	uint16_t speed = *(uint16_t*)(buf);
-	set_speed(speed);
-	return len;
+  uint16_t speed = *(uint16_t *)(buf);
+  set_speed(speed);
+  return len;
 }
-
-
 
 static ssize_t read_dir(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			void *buf, uint16_t len, uint16_t offset){
+                        void *buf, uint16_t len, uint16_t offset) {
 
-	extern bool get_direction();
-	bool dir =  get_direction();;
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, &dir, sizeof(dir));
+  extern bool get_direction();
+  bool dir = get_direction();
+  ;
+  return bt_gatt_attr_read(conn, attr, buf, len, offset, &dir, sizeof(dir));
 }
-
 
 static ssize_t write_dir(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			 const void *buf, uint16_t len, uint16_t offset,
-			 uint8_t flags) {
+                         const void *buf, uint16_t len, uint16_t offset,
+                         uint8_t flags) {
 
-	extern void set_direction(bool direction); 
-	set_direction ( *(bool*)(buf) );
-	
-	return len;
+  extern void set_direction(bool direction);
+  set_direction(*(bool *)(buf));
+
+  return len;
 }
 
-
-
 static ssize_t read_bat(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			void *buf, uint16_t len, uint16_t offset){
-	uint16_t voltage = adc_measure();
+                        void *buf, uint16_t len, uint16_t offset) {
+  uint16_t voltage = adc_measure();
 
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, &voltage, sizeof(voltage));
+  return bt_gatt_attr_read(conn, attr, buf, len, offset, &voltage,
+                           sizeof(voltage));
 }
 //--
 
-static void rgb_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
-{
-	printf("rgb_ccc_cfg_changed, value %04X\n", value);
-	m_rgb_notify_on = (value == BT_GATT_CCC_NOTIFY) ? 1 : 0;
+static void rgb_ccc_cfg_changed(const struct bt_gatt_attr *attr,
+                                uint16_t value) {
+  printf("rgb_ccc_cfg_changed, value %04X\n", value);
+  m_rgb_notify_on = (value == BT_GATT_CCC_NOTIFY) ? 1 : 0;
 }
 
-static void bat_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
-{
-	printf("bat_ccc_cfg_changed, value %04X\n", value);
-	m_bat_notify_on = (value == BT_GATT_CCC_NOTIFY) ? 1 : 0;
+static void bat_ccc_cfg_changed(const struct bt_gatt_attr *attr,
+                                uint16_t value) {
+  printf("bat_ccc_cfg_changed, value %04X\n", value);
+  m_bat_notify_on = (value == BT_GATT_CCC_NOTIFY) ? 1 : 0;
 }
 
 const struct bt_gatt_cpf m_spd_cpf = {
-	0x06 , // uint16
-	-3 ,   // *10⁻³
-	0x2703 , // second 
-	0x0001 , // Bluetooth SIG assigned numbers 
-	0x0001, // ?? 
-}; 
-
+    0x06,   // uint16
+    -3,     // *10⁻³
+    0x2703, // second
+    0x0001, // Bluetooth SIG assigned numbers
+    0x0001, // ??
+};
 
 const struct bt_gatt_cpf m_bat_cpf = {
-	0x06 , // uint16
-	-3 ,   // *10⁻³
-	0x2728 , // volt 
-	0x0001 , // Bluetooth SIG assigned numbers 
-	0x0001, // ?? 
-}; 
+    0x06,   // uint16
+    -3,     // *10⁻³
+    0x2728, // volt
+    0x0001, // Bluetooth SIG assigned numbers
+    0x0001, // ??
+};
 
 const struct bt_gatt_cpf m_dir_cpf = {
-	0x01 , // bool
-	0 ,   // *10⁻⁰
-	0x2700 , // unitless 
-	0x0001 , // Bluetooth SIG assigned numbers 
-	0x0001, // ?? 
-}; 
-
+    0x01,   // bool
+    0,      // *10⁻⁰
+    0x2700, // unitless
+    0x0001, // Bluetooth SIG assigned numbers
+    0x0001, // ??
+};
 
 /* Vendor Primary Service Declaration */
-BT_GATT_SERVICE_DEFINE(hat_svc,
+BT_GATT_SERVICE_DEFINE(
+    hat_svc,
 
-	BT_GATT_PRIMARY_SERVICE(&hat_srv_uuid.uuid),
-		BT_GATT_CHARACTERISTIC(&hat_chr_rgb_uuid.uuid,
-					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE | BT_GATT_CHRC_NOTIFY,
-					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-					   read_rgb, write_rgb, NULL),
-			BT_GATT_CCC(rgb_ccc_cfg_changed,
-					BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-			BT_GATT_CUD("RGB", BT_GATT_PERM_READ),
+    BT_GATT_PRIMARY_SERVICE(&hat_srv_uuid.uuid),
+    BT_GATT_CHARACTERISTIC(&hat_chr_rgb_uuid.uuid,
+                           BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE |
+                               BT_GATT_CHRC_NOTIFY,
+                           BT_GATT_PERM_READ | BT_GATT_PERM_WRITE, read_rgb,
+                           write_rgb, NULL),
+    BT_GATT_CCC(rgb_ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+    BT_GATT_CUD("RGB", BT_GATT_PERM_READ),
 
-	BT_GATT_CHARACTERISTIC(&hat_chr_spd_uuid.uuid,
-					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE ,
-					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-					   read_spd, write_spd, NULL),
-			BT_GATT_CUD("Speed", BT_GATT_PERM_READ),
-			BT_GATT_CPF(&m_spd_cpf),
+    BT_GATT_CHARACTERISTIC(&hat_chr_spd_uuid.uuid,
+                           BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
+                           BT_GATT_PERM_READ | BT_GATT_PERM_WRITE, read_spd,
+                           write_spd, NULL),
+    BT_GATT_CUD("Speed", BT_GATT_PERM_READ), BT_GATT_CPF(&m_spd_cpf),
 
-	BT_GATT_CHARACTERISTIC(&hat_chr_dir_uuid.uuid,
-					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE ,
-					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-					   read_dir, write_dir, NULL),
-			BT_GATT_CUD("Direction", BT_GATT_PERM_READ),
-			BT_GATT_CPF(&m_dir_cpf),
+    BT_GATT_CHARACTERISTIC(&hat_chr_dir_uuid.uuid,
+                           BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
+                           BT_GATT_PERM_READ | BT_GATT_PERM_WRITE, read_dir,
+                           write_dir, NULL),
+    BT_GATT_CUD("Direction", BT_GATT_PERM_READ), BT_GATT_CPF(&m_dir_cpf),
 
-	BT_GATT_CHARACTERISTIC(&hat_chr_bat_uuid.uuid,
-					   BT_GATT_CHRC_READ |  BT_GATT_CHRC_NOTIFY,
-					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-					   read_bat, NULL , NULL),
-			BT_GATT_CCC(bat_ccc_cfg_changed,
-					BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-			BT_GATT_CUD("Voltage", BT_GATT_PERM_READ),
-			BT_GATT_CPF(&m_bat_cpf),
-);
+    BT_GATT_CHARACTERISTIC(&hat_chr_bat_uuid.uuid,
+                           BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+                           BT_GATT_PERM_READ | BT_GATT_PERM_WRITE, read_bat,
+                           NULL, NULL),
+    BT_GATT_CCC(bat_ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+    BT_GATT_CUD("Voltage", BT_GATT_PERM_READ), BT_GATT_CPF(&m_bat_cpf), );
 
 static const struct bt_data ad[] = {
-	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-	BT_DATA_BYTES(BT_DATA_UUID16_ALL,  BT_UUID_16_ENCODE(BT_UUID_BAS_VAL)),
-	BT_DATA_BYTES(BT_DATA_UUID128_ALL, BT_UUID_CUSTOM_SERVICE_VAL ),
+    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+    BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_BAS_VAL)),
+    BT_DATA_BYTES(BT_DATA_UUID128_ALL, BT_UUID_CUSTOM_SERVICE_VAL),
 };
 
 static struct bt_data sd[] = {
-	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+    BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME,
+            sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
-void mtu_updated(struct bt_conn *conn, uint16_t tx, uint16_t rx)
-{
-	printk("Updated MTU: TX: %d RX: %d bytes\n", tx, rx);
+void mtu_updated(struct bt_conn *conn, uint16_t tx, uint16_t rx) {
+  printk("Updated MTU: TX: %d RX: %d bytes\n", tx, rx);
 }
 
-static struct bt_gatt_cb gatt_callbacks = {
-	.att_mtu_updated = mtu_updated
-};
+static struct bt_gatt_cb gatt_callbacks = {.att_mtu_updated = mtu_updated};
 
-static void connected(struct bt_conn *conn, uint8_t err)
-{
-	if (err) {
-		printk("Connection failed (err 0x%02x)\n", err);
-	} else {
-		printk("Connected\n");
-	}
-}
+static struct bt_conn *m_bt_conn;
+
 
 
 void refresh_advertising_data(struct k_work *work) {
-// https://devzone.nordicsemi.com/f/nordic-q-a/90277/using-bt_le_adv_update_data/473767?focus=true
-	struct bt_data new_sd[] = {
-		BT_DATA(BT_DATA_NAME_COMPLETE, bt_get_name(), strlen(bt_get_name()) ),
-	};
-	*sd = *new_sd;
-	int 
-	err = bt_le_adv_update_data(ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
-	printf("Update advertising status %d\n",err);
+  // https://devzone.nordicsemi.com/f/nordic-q-a/90277/using-bt_le_adv_update_data/473767?focus=true
+  struct bt_data new_sd[] = {
+      BT_DATA(BT_DATA_NAME_COMPLETE, bt_get_name(), strlen(bt_get_name())),
+  };
+  *sd = *new_sd;
+  int err = bt_le_adv_update_data(ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+  printf("Update advertising status %d\n", err);
 
-	printf("Device name %s\n",	bt_get_name ());
-
+  printf("Device name %s\n", bt_get_name());
 }
 K_WORK_DEFINE(refresh_advertising_data_work, refresh_advertising_data);
-static void disconnected(struct bt_conn *conn, uint8_t reason) {
-	printk("Disconnected (reason 0x%02x)\n", reason);
-
-
-	// Update the ID in the advertising data, because the user might have changed it
-	// when they were connected.
-	k_work_submit(&refresh_advertising_data_work);
-
-
+static void connected(struct bt_conn *conn, uint8_t err) {
+  if (err) {
+    printk("Connection failed (err 0x%02x)\n", err);
+	m_connected = false;
+	m_bt_conn = NULL;
+  } else {
+    printk("Connected\n");
+	m_connected = true;
+	m_bt_conn = conn;
+  }
 }
 
+static void disconnected(struct bt_conn *conn, uint8_t reason) {
+  printk("Disconnected (reason 0x%02x)\n", reason);
+	m_connected = false;
+	m_bt_conn = NULL;
+  // Update the ID in the advertising data, because the user might have changed
+  // it when they were connected.
+  k_work_submit(&refresh_advertising_data_work);
+}
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
-	.connected = connected,
-	.disconnected = disconnected,
+    .connected = connected,
+    .disconnected = disconnected,
 };
 
+static void advertise(void) {
+  struct bt_data new_sd[] = {
+      BT_DATA(BT_DATA_NAME_COMPLETE, bt_get_name(), strlen(bt_get_name())),
+  };
+  *sd = *new_sd;
 
 
-static void bt_ready(void)
-{
-	int err;
+  int err;
+  //	err = bt_le_adv_start(BT_LE_ADV_CONN_ONE_TIME, ad, ARRAY_SIZE(ad), sd,
+  //ARRAY_SIZE(sd));
+  err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
 
-	printk("Bluetooth initialised\n");
+  if (err) {
+    printk("Advertising failed to start (err %d)\n", err);
+    return;
+  }
 
-	if (IS_ENABLED(CONFIG_SETTINGS)) {
-		settings_load();
-	}
+  printk("Advertising successfully started\n");
+}
 
-	struct bt_data new_sd[] = {
-		BT_DATA(BT_DATA_NAME_COMPLETE, bt_get_name(), strlen(bt_get_name()) ),
-	};
-	*sd = *new_sd;
+static void bt_ready(void) {
 
-						//BT_LE_ADV_OPT_CONNECTABLE ??
-//	err = bt_le_adv_start(BT_LE_ADV_CONN_ONE_TIME, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
-	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
 
-	if (err) {
-		printk("Advertising failed to start (err %d)\n", err);
-		return;
-	}
+  printk("Bluetooth initialised\n");
 
-	printk("Advertising successfully started\n");
+  if (IS_ENABLED(CONFIG_SETTINGS)) {
+    settings_load();
+  }
+
+
 }
 
 static void bas_notify(void) {
-	int16_t voltage = adc_measure();
-	voltage -= 3300;
+  int16_t voltage = adc_measure();
+  voltage -= 3300;
 
-	// Note: we need to determine the discharge curve, this is a placeholder.
-	int  battery_level = (voltage * 100 ) / (4200 - 3300) ;
-	if (battery_level < 0) battery_level = 0;
-	if (battery_level > 100) battery_level = 100;
-	bt_bas_set_battery_level(battery_level);
+  // Note: we need to determine the discharge curve, this is a placeholder.
+  int battery_level = (voltage * 100) / (4200 - 3300);
+  if (battery_level < 0)
+    battery_level = 0;
+  if (battery_level > 100)
+    battery_level = 100;
+  bt_bas_set_battery_level(battery_level);
 }
 
-void bat_notify(void) {	
-	int16_t voltage = adc_measure();
-//	int ret = bt_gatt_notify(NULL, &hat_svc.attrs[7], &voltage, sizeof(voltage));
+void bat_notify(void) {
+  int16_t voltage = adc_measure();
+  //	int ret = bt_gatt_notify(NULL, &hat_svc.attrs[7], &voltage,
+  //sizeof(voltage));
 
-	int ret = bt_gatt_notify_uuid(NULL, &hat_chr_bat_uuid.uuid,  hat_svc.attrs,  &voltage, sizeof(voltage));
+  int ret = bt_gatt_notify_uuid(NULL, &hat_chr_bat_uuid.uuid, hat_svc.attrs,
+                                &voltage, sizeof(voltage));
 
-	printf("bat not returned %X\n");
+  printf("bat not returned %X\n");
 }
 
+int ble_init(void) {
+  int err;
 
+  err = bt_enable(NULL);
+  if (err) {
+    printk("Bluetooth init failed (err %d)\n", err);
+    return 0;
+  }
 
-int ble_init(void)
-{
-	int err;
-
-	err = bt_enable(NULL);
-	if (err) {
-		printk("Bluetooth init failed (err %d)\n", err);
-		return 0;
-	}
-
-	bt_ready();
-	bt_gatt_cb_register(&gatt_callbacks);
-	return 0;
+  bt_ready();
+  bt_gatt_cb_register(&gatt_callbacks);
+  return 0;
 }
 
+/*
+int ble_deinit(void) {
+	bt_disable();
+}
+*/
 
+void ble_enable(void) {
+	advertise();
+	m_ble_enabled = true;
+}
+void ble_disable(void){
+	bt_le_adv_stop();
+	if (m_bt_conn)
+		bt_conn_disconnect(m_bt_conn,BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+	m_ble_enabled = false;
+}
 
+bool ble_is_connected(void) {
+	return m_connected;
+}
+
+bool ble_is_enabled(void) {
+	return m_ble_enabled;
+}
 
 void ble_battery_process(void) {
-	/* Battery level simulation */
-	bas_notify();
-	bat_notify();
+  /* Battery level simulation */
+  bas_notify();
+  bat_notify();
 }
-

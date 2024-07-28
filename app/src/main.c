@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr/kernel.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 #include <app/drivers/blink.h>
@@ -12,6 +12,12 @@
 #include <app_version.h>
 
 #include <stdio.h>
+
+
+
+
+
+
 
 void ws2812_blue(void);
 void ws2812_demo(void);
@@ -21,31 +27,32 @@ extern void ble_battery_process(struct k_timer *work);
 extern void adc_init();
 K_TIMER_DEFINE(ble_battery_timer, ble_battery_process, NULL);
 
-void arch_system_halt(unsigned int reason){
-	// Zephyr Crashed, reboot
-	printf("Crash with reason %d\n",reason);
-	volatile int i;
-	//for (i = 0 ; i < 10000; i++) __NOP();
-	NVIC_SystemReset();
+void arch_system_halt(unsigned int reason) {
+  // Zephyr Crashed, reboot
+  printf("Crash with reason %d\n", reason);
+  volatile int i;
+  // for (i = 0 ; i < 10000; i++) __NOP();
+  NVIC_SystemReset();
 }
 
 
-
+void button_process(void);
+K_TIMER_DEFINE(button_timer, button_process, NULL);
 
 
 
 int main(void) {
-	ws2812_blue();
-	ble_init();
-	adc_init();
+  ws2812_blue();
+  ble_init();
+  adc_init();
+  button_init();
+  // Measure Battery Every 10 sec
+  k_timer_start(&ble_battery_timer, K_SECONDS(10), K_SECONDS(10));
 
-	// Measure Battery Every 10 sec
-	k_timer_start(&ble_battery_timer, K_SECONDS(10), K_SECONDS(10));
 
- 	
-	ws2812_demo();
- 
+  k_timer_start(&button_timer, K_MSEC(50), K_MSEC(50));
 
-	return 0;
+  ws2812_demo();
+
+  return 0;
 }
-
